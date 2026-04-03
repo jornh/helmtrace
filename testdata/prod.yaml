@@ -1,0 +1,5 @@
+replicaCount: 3
+
+database:
+  host: db.prod
+  # port is intentionally omitted — base value should stand
