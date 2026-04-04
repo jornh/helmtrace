@@ -34,7 +34,8 @@ helmtrace -f testdata/base/values.yaml -f testdata/env/prod.yaml [-f testdata/ov
 ```
 KEY                        base        env/prod    override    EFFECTIVE
 database.host              db.internal db.prod     —           db.prod
-database.port              5432        5432        —           5432  ← redundant in env/prod
+database.port              5432        —           —           5432    ← filtered out unless --all-rows
+image.tag                  latest      latest      —           latest  ← redundant in env/prod
 replicaCount               1           3           5           5
 ```
 
