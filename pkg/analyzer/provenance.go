@@ -2,6 +2,7 @@ package provenance
 
 import (
 	"fmt"
+ "reflect"
 	"strings"
 )
 
@@ -121,7 +122,7 @@ func getPath(m map[string]interface{}, path string) (interface{}, bool) {
 // deepEqual compares two values for equality, handling the map types that
 // come out of YAML unmarshalling.
 func deepEqual(a, b interface{}) bool {
-	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
+    return reflect.DeepEqual(a, b)
 }
 
 // sortNodes sorts ValueNodes by key for deterministic output.
