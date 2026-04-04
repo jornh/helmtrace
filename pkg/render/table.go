@@ -18,7 +18,7 @@ import (
 //	replicaCount          1           3           5           5
 //
 // A ✕ marks values that are redundant (identical to effective value from lower layers).
-func Table(w io.Writer, nodes []provenance.ValueNode, layers []provenance.Layer) {
+func Table(w io.Writer, nodes []analyzer.ValueNode, layers []analyzer.Layer) {
 	layerNames := make([]string, len(layers))
 	for i, l := range layers {
 		layerNames[i] = l.Name
@@ -67,7 +67,7 @@ func Table(w io.Writer, nodes []provenance.ValueNode, layers []provenance.Layer)
 	// Rows.
 	for _, n := range nodes {
 		// Index sources by layer name for O(1) lookup per row.
-		sourceByLayer := map[string]provenance.Source{}
+		sourceByLayer := map[string]analyzer.Source{}
 		for _, s := range n.Sources {
 			sourceByLayer[s.Layer] = s
 		}
