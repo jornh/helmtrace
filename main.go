@@ -13,12 +13,14 @@ import (
 
 func main() {
 	var files layerFlags
+	var allRows bool
 	flag.Var(&files, "f", "values file, may be repeated; order defines precedence (lowest first)")
+	flag.BoolVar(&allRows, "all-rows", false, "show all keys, including those that appear in only one layer")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `helmtrace - show provenance of values across layered Helm values files
 
 Usage:
-  helmtrace -f base.yaml -f env/prod.yaml [-f override.yaml]
+  helmtrace -f base.yaml -f env/prod.yaml [-f override.yaml] [--all-rows]
 
 Flags:
 `)
@@ -37,13 +39,14 @@ Flags:
 		os.Exit(1)
 	}
 
-	nodes := provenance.Analyze(layers)
+	opts := analyzer.Options{MultiLayerOnly: !allRows}
+	nodes := analyzer.Analyze(layers, opts)
 	render.Table(os.Stdout, nodes, layers)
 }
 
 // loadLayers reads each file and returns a slice of Layers in the same order.
-func loadLayers(files []string) ([]provenance.Layer, error) {
-	layers := make([]provenance.Layer, 0, len(files))
+func loadLayers(files []string) ([]analyzer.Layer, error) {
+	layers := make([]analyzer.Layer, 0, len(files))
 	for _, path := range files {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -56,7 +59,7 @@ func loadLayers(files []string) ([]provenance.Layer, error) {
 		if values == nil {
 			values = map[string]interface{}{}
 		}
-		layers = append(layers, provenance.Layer{
+		layers = append(layers, analyzer.Layer{
 			Name:   layerName(path),
 			Values: values,
 		})

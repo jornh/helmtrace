@@ -1,4 +1,4 @@
-package provenance
+package analyzer
 
 import (
 	"os"
@@ -80,7 +80,7 @@ func TestAnalyze_Provenance(t *testing.T) {
 		},
 	}
 
-	assertProvenanceNodes(t, Analyze(layers))
+	assertProvenanceNodes(t, Analyze(layers, Options{}))
 }
 
 func TestAnalyze_FromFiles(t *testing.T) {
@@ -94,7 +94,7 @@ func TestAnalyze_FromFiles(t *testing.T) {
 		t.Fatalf("loading test layers: %v", err)
 	}
 
-	assertProvenanceNodes(t, Analyze(layers))
+	assertProvenanceNodes(t, Analyze(layers, Options{}))
 }
 
 // assertProvenanceNodes encodes the expected outcomes for the three-layer
@@ -189,6 +189,51 @@ func layerNameFromPath(path string) string {
 	return name
 }
 
+func TestAnalyze_MultiLayerOnly(t *testing.T) {
+	layers := []Layer{
+		{
+			Name: "base",
+			Values: map[string]interface{}{
+				"baseOnly":     "x",
+				"replicaCount": 1,
+			},
+		},
+		{
+			Name: "prod",
+			Values: map[string]interface{}{
+				"replicaCount": 3,
+			},
+		},
+	}
+
+	all := Analyze(layers, Options{})
+	filtered := Analyze(layers, Options{MultiLayerOnly: true})
+
+	// Unfiltered should contain both keys.
+	allByKey := map[string]ValueNode{}
+	for _, n := range all {
+		allByKey[n.Key] = n
+	}
+	if _, ok := allByKey["baseOnly"]; !ok {
+		t.Error("unfiltered: expected baseOnly to be present")
+	}
+	if _, ok := allByKey["replicaCount"]; !ok {
+		t.Error("unfiltered: expected replicaCount to be present")
+	}
+
+	// Filtered should suppress baseOnly (single-layer) but keep replicaCount.
+	filtByKey := map[string]ValueNode{}
+	for _, n := range filtered {
+		filtByKey[n.Key] = n
+	}
+	if _, ok := filtByKey["baseOnly"]; ok {
+		t.Error("filtered: baseOnly should be suppressed (only in base layer)")
+	}
+	if _, ok := filtByKey["replicaCount"]; !ok {
+		t.Error("filtered: replicaCount should be present (in both layers)")
+	}
+}
+
 func TestIsRedundant(t *testing.T) {
 	layers := []Layer{
 		{
@@ -202,7 +247,7 @@ func TestIsRedundant(t *testing.T) {
 		},
 	}
 
-	nodes := Analyze(layers)
+	nodes := Analyze(layers, Options{})
 	byKey := map[string]ValueNode{}
 	for _, n := range nodes {
 		byKey[n.Key] = n
@@ -232,7 +277,7 @@ func TestIsRedundant_NotRedundant(t *testing.T) {
 		},
 	}
 
-	nodes := Analyze(layers)
+	nodes := Analyze(layers, Options{})
 	byKey := map[string]ValueNode{}
 	for _, n := range nodes {
 		byKey[n.Key] = n

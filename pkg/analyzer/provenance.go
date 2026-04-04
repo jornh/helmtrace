@@ -1,4 +1,4 @@
-package provenance
+package analyzer
 
 import (
     "reflect"
@@ -41,9 +41,24 @@ func (n *ValueNode) IsRedundant(idx int) bool {
 	return deepEqual(n.Sources[idx].Value, effectiveBelow)
 }
 
+// Options controls what Analyze returns.
+type Options struct {
+	// MultiLayerOnly omits keys that appear in only one layer, keeping the
+	// output focused on values that are actually overridden or duplicated
+	// across layers. Base-only keys are hidden unless something else touches
+	// them.
+	MultiLayerOnly bool
+}
+
+// IsMultiLayer reports whether the key is defined in more than one layer.
+// Used to filter base-only noise from the rendered table.
+func (n *ValueNode) IsMultiLayer() bool {
+	return len(n.Sources) > 1
+}
+
 // Analyze merges layers in order (last layer wins) and returns one ValueNode
-// per leaf key found across all layers.
-func Analyze(layers []Layer) []ValueNode {
+// per leaf key found across all layers, filtered by opts.
+func Analyze(layers []Layer, opts Options) []ValueNode {
 	// Collect all known leaf paths across all layers.
 	pathSet := map[string]struct{}{}
 	for _, l := range layers {
@@ -55,6 +70,9 @@ func Analyze(layers []Layer) []ValueNode {
 	nodes := make([]ValueNode, 0, len(pathSet))
 	for path := range pathSet {
 		node := buildNode(path, layers)
+		if opts.MultiLayerOnly && !node.IsMultiLayer() {
+			continue
+		}
 		nodes = append(nodes, node)
 	}
 

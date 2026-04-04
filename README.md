@@ -21,16 +21,11 @@ To do that it will:
 # one way to install
 mise use github:jornh/helmtrace
 # CLI shape
-helmtrace provenance -f base.yaml -f env/prod.yaml -f override.yaml
-
-# TODO helmtrace redundant  -f base.yaml -f env/prod.yaml -f override.yaml
+helmtrace -f testdata/base/values.yaml -f testdata/env/prod.yaml [-f testdata/override.yaml] [--all-rows]
 
 # TODO helmtrace trim       -f base.yaml -f env/prod.yaml --layer env/prod.yaml
 # `trim` outputs a copy of the target layer with redundant keys removed — safe to write back.
 ```
-
-....
-
 
 ....
 
