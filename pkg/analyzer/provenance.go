@@ -1,8 +1,7 @@
 package provenance
 
 import (
-	"fmt"
- "reflect"
+    "reflect"
 	"strings"
 )
 
