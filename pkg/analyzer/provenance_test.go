@@ -99,6 +99,11 @@ func TestAnalyze_Provenance(t *testing.T) {
 					"host": "db.internal",
 					"port": 5432,
 				},
+				"sidecars": []interface{}{
+					map[string]interface{}{"name": "logging", "image": "fluent/fluent-bit:2.2"},
+					map[string]interface{}{"name": "metrics", "image": "prom/statsd-exporter:v0.26"},
+				},
+				"tags": []interface{}{"backend", "production"},
 			},
 		},
 		{
@@ -108,6 +113,10 @@ func TestAnalyze_Provenance(t *testing.T) {
 				"database": map[string]interface{}{
 					"host": "db.prod",
 					// port intentionally omitted — base value should stand
+				},
+				"sidecars": []interface{}{
+					map[string]interface{}{"name": "logging", "image": "fluent/fluent-bit:3.0"},
+					map[string]interface{}{"name": "metrics", "image": "prom/statsd-exporter:v0.26"},
 				},
 			},
 		},
