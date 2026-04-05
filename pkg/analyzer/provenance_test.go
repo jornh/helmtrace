@@ -21,7 +21,30 @@ func TestLeafPaths(t *testing.T) {
 		"replicaCount":  true,
 		"database.host": true,
 		"database.port": true,
-		"tags":          true,
+		"tags.0":        true,
+		"tags.1":        true,
+	}
+	if len(paths) != len(want) {
+		t.Fatalf("got %d paths, want %d: %v", len(paths), len(want), paths)
+	}
+	for _, p := range paths {
+		if !want[p] {
+			t.Errorf("unexpected path: %q", p)
+		}
+	}
+}
+
+func TestLeafPaths_ListOfMaps(t *testing.T) {
+	m := map[string]interface{}{
+		"foo": []interface{}{
+			map[string]interface{}{"bar": "barval"},
+			map[string]interface{}{"baz": 42},
+		},
+	}
+	paths := leafPaths(m, "")
+	want := map[string]bool{
+		"foo.0.bar": true,
+		"foo.1.baz": true,
 	}
 	if len(paths) != len(want) {
 		t.Fatalf("got %d paths, want %d: %v", len(paths), len(want), paths)
@@ -39,6 +62,10 @@ func TestGetPath(t *testing.T) {
 			"host": "db.internal",
 			"port": 5432,
 		},
+		"foo": []interface{}{
+			map[string]interface{}{"bar": "barval"},
+			map[string]interface{}{"baz": 42},
+		},
 	}
 	v, ok := getPath(m, "database.host")
 	if !ok || v != "db.internal" {
@@ -47,6 +74,18 @@ func TestGetPath(t *testing.T) {
 	_, ok = getPath(m, "database.missing")
 	if ok {
 		t.Error("expected false for missing key")
+	}
+	v, ok = getPath(m, "foo.0.bar")
+	if !ok || v != "barval" {
+		t.Errorf("foo.0.bar: got (%v, %v), want (barval, true)", v, ok)
+	}
+	v, ok = getPath(m, "foo.1.baz")
+	if !ok || v != 42 {
+		t.Errorf("foo.1.baz: got (%v, %v), want (42, true)", v, ok)
+	}
+	_, ok = getPath(m, "foo.5.bar")
+	if ok {
+		t.Error("expected false for out-of-bounds index")
 	}
 }
 
@@ -142,6 +181,39 @@ func assertProvenanceNodes(t *testing.T, nodes []ValueNode) {
 	}
 	if len(port.Sources) != 1 {
 		t.Errorf("database.port sources: got %d, want 1", len(port.Sources))
+	}
+
+	// sidecars.0.image: overridden in prod (logging sidecar image changes).
+	sc0img, ok := byKey["sidecars.0.image"]
+	if !ok {
+		t.Fatal("sidecars.0.image: key missing from results")
+	}
+	if sc0img.EffectiveValue != "fluent/fluent-bit:3.0" {
+		t.Errorf("sidecars.0.image effective: got %v, want fluent/fluent-bit:3.0", sc0img.EffectiveValue)
+	}
+	if len(sc0img.Sources) != 2 {
+		t.Errorf("sidecars.0.image sources: got %d, want 2", len(sc0img.Sources))
+	}
+
+	// sidecars.1.image: same value in base and prod — redundant in prod.
+	sc1img, ok := byKey["sidecars.1.image"]
+	if !ok {
+		t.Fatal("sidecars.1.image: key missing from results")
+	}
+	if !sc1img.IsRedundant(1) {
+		t.Error("sidecars.1.image: prod value is identical to base, should be redundant")
+	}
+
+	// tags.0: list of scalars, base only.
+	tag0, ok := byKey["tags.0"]
+	if !ok {
+		t.Fatal("tags.0: key missing from results")
+	}
+	if tag0.EffectiveValue != "backend" {
+		t.Errorf("tags.0 effective: got %v, want backend", tag0.EffectiveValue)
+	}
+	if len(tag0.Sources) != 1 {
+		t.Errorf("tags.0 sources: got %d, want 1", len(tag0.Sources))
 	}
 }
 
