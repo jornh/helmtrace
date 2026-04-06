@@ -31,15 +31,24 @@ helmtrace -f testdata/base/values.yaml -f testdata/env/prod.yaml [-f testdata/ov
 
 `provenance` output example:
 
-```
-KEY                        base        env/prod    override    EFFECTIVE
-database.host              db.internal db.prod     —           db.prod
-database.port              5432        —           —           5432    ← filtered out unless --all-rows
-image.tag                  latest      latest      —           latest  ← redundant in env/prod
-replicaCount               1           3           5           5
+```bash
+$ helmtrace -f testdata/base.yaml -f testdata/prod.yaml -f testdata/override.yaml --all-rows
+KEY                 base                        env/prod                    override                    EFFECTIVE
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+database.host       db.internal                 db.prod                     —                           db.prod
+database.port       5432                        —                           —                           5432                           ← filtered out unless --all-rows
+replicaCount        1                           3                           5                           5
+sidecars.0.image    fluent/fluent-bit:2.2       fluent/fluent-bit:3.0       —                           fluent/fluent-bit:3.0
+sidecars.0.name     logging                     logging ✕                   —                           logging
+sidecars.1.image    prom/statsd-exporter:v0…    prom/statsd-exporter:v0… ✕  —                           prom/statsd-exporter:v0.26
+sidecars.1.name     metrics                     metrics ✕                   —                           metrics
+tags.0              backend                     —                           —                           backend                        ← filtered out unless --all-rows
+tags.1              production                  —                           —                           production                     ← filtered out unless --all-rows
+
+✕ = redundant (identical to effective value from lower layers)
 ```
 
-The `5432` row is the DRY violation — `env/prod` is setting something the `base` already provides at the same value.
+The ✕ = redundant marked cells are DRY violations — `env/prod` is setting something the `base` already provides at the same value.
 
 
 ## Details
