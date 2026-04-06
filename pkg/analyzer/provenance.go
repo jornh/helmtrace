@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"fmt"
     "reflect"
 	"strings"
 )
@@ -100,8 +101,9 @@ func buildNode(path string, layers []Layer) ValueNode {
 	return node
 }
 
-// leafPaths returns all dot-separated paths to scalar (non-map) values
-// within a nested map. Slices are treated as leaf values.
+// leafPaths returns all dot-separated paths to scalar (non-map, non-slice)
+// values within a nested map. Slices are walked by index (foo.0.bar),
+// and slices of scalars surface as foo.0, foo.1, etc.
 func leafPaths(m map[string]interface{}, prefix string) []string {
 	var paths []string
 	for k, v := range m {
@@ -109,16 +111,33 @@ func leafPaths(m map[string]interface{}, prefix string) []string {
 		if prefix != "" {
 			full = prefix + "." + k
 		}
-		if child, ok := v.(map[string]interface{}); ok {
-			paths = append(paths, leafPaths(child, full)...)
-		} else {
-			paths = append(paths, full)
-		}
+		paths = append(paths, walkValue(v, full)...)
 	}
 	return paths
 }
 
-// getPath retrieves the value at a dot-separated path from a nested map.
+// walkValue recurses into maps and slices, returning leaf paths.
+func walkValue(v interface{}, prefix string) []string {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		var paths []string
+		for k, child := range val {
+			paths = append(paths, walkValue(child, prefix+"."+k)...)
+		}
+		return paths
+	case []interface{}:
+		var paths []string
+		for i, elem := range val {
+			paths = append(paths, walkValue(elem, fmt.Sprintf("%s.%d", prefix, i))...)
+		}
+		return paths
+	default:
+		return []string{prefix}
+	}
+}
+
+// getPath retrieves the value at a dot-separated path from a nested
+// map/slice structure. Numeric segments index into slices (e.g. "foo.0.bar").
 // Returns (value, true) if found, (nil, false) if not.
 func getPath(m map[string]interface{}, path string) (interface{}, bool) {
 	parts := strings.SplitN(path, ".", 2)
@@ -129,11 +148,40 @@ func getPath(m map[string]interface{}, path string) (interface{}, bool) {
 	if len(parts) == 1 {
 		return v, true
 	}
-	child, ok := v.(map[string]interface{})
-	if !ok {
+	return getPathValue(v, parts[1])
+}
+
+// getPathValue continues path traversal into any value type.
+func getPathValue(v interface{}, path string) (interface{}, bool) {
+	parts := strings.SplitN(path, ".", 2)
+	switch val := v.(type) {
+	case map[string]interface{}:
+		child, ok := val[parts[0]]
+		if !ok {
+			return nil, false
+		}
+		if len(parts) == 1 {
+			return child, true
+		}
+		return getPathValue(child, parts[1])
+	case []interface{}:
+		idx := 0
+		for _, c := range parts[0] {
+			if c < '0' || c > '9' {
+				return nil, false
+			}
+			idx = idx*10 + int(c-'0')
+		}
+		if idx >= len(val) {
+			return nil, false
+		}
+		if len(parts) == 1 {
+			return val[idx], true
+		}
+		return getPathValue(val[idx], parts[1])
+	default:
 		return nil, false
 	}
-	return getPath(child, parts[1])
 }
 
 // deepEqual compares two values for equality, handling the map types that

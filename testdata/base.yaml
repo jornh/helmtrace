@@ -4,5 +4,14 @@ database:
   host: db.internal
   port: 5432
 
-image:
-  tag: latest
+# list of maps — each entry's keys should surface as sidecars.0.name, sidecars.1.name etc.
+sidecars:
+  - name: logging
+    image: fluent/fluent-bit:2.2
+  - name: metrics
+    image: prom/statsd-exporter:v0.26
+
+# list of scalars — should surface as tags.0, tags.1
+tags:
+  - backend
+  - production

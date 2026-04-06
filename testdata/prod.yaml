@@ -4,5 +4,9 @@ database:
   host: db.prod
   # port is intentionally omitted — base value should stand
 
-image:
-  tag: latest
+# override the logging sidecar image; metrics sidecar is base-only
+sidecars:
+  - name: logging
+    image: fluent/fluent-bit:3.0
+  - name: metrics
+    image: prom/statsd-exporter:v0.26

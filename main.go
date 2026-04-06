@@ -14,8 +14,10 @@ import (
 func main() {
 	var files layerFlags
 	var allRows bool
+	var plain bool
 	flag.Var(&files, "f", "values file, may be repeated; order defines precedence (lowest first)")
 	flag.BoolVar(&allRows, "all-rows", false, "show all keys, including those that appear in only one layer")
+	flag.BoolVar(&plain, "plain", false, "plain text output without colours or styling")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `helmtrace - show provenance of values across layered Helm values files
 
@@ -41,7 +43,11 @@ Flags:
 
 	opts := analyzer.Options{MultiLayerOnly: !allRows}
 	nodes := analyzer.Analyze(layers, opts)
-	render.Table(os.Stdout, nodes, layers)
+	if plain {
+		render.Table(os.Stdout, nodes, layers)
+	} else {
+		render.TUITable(nodes, layers)
+	}
 }
 
 // loadLayers reads each file and returns a slice of Layers in the same order.
