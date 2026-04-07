@@ -1,0 +1,7 @@
+resources:
+  - base.yaml
+
+# patchesStrategicMerge is the pre-v4 field for strategic merge patches.
+# Each entry is applied in order; later entries take precedence.
+patchesStrategicMerge:
+  - patch.yaml
