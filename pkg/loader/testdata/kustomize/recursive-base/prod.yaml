@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: myapp
+          env:
+            - name: DATABASE_HOST
+              value: db.prod
+            # DATABASE_PORT and CACHE_HOST intentionally omitted — base values stand

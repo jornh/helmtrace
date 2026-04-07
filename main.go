@@ -5,24 +5,27 @@ import (
 	"fmt"
 	"os"
 
-	"gopkg.in/yaml.v3"
-
 	"helmtrace/pkg/analyzer"
+	"helmtrace/pkg/loader"
 	"helmtrace/pkg/render"
 )
 
 func main() {
 	var files layerFlags
+	var kustomizeRoot string
 	var allRows bool
 	var plain bool
+
 	flag.Var(&files, "f", "values file, may be repeated; order defines precedence (lowest first)")
+	flag.StringVar(&kustomizeRoot, "k", "", "kustomize root directory; mutually exclusive with -f")
 	flag.BoolVar(&allRows, "all-rows", false, "show all keys, including those that appear in only one layer")
 	flag.BoolVar(&plain, "plain", false, "plain text output without colours or styling")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, `helmtrace - show provenance of values across layered Helm values files
+		fmt.Fprintf(os.Stderr, `helmtrace - show provenance of values across layered Helm values files or kustomize overlays
 
 Usage:
-  helmtrace -f base.yaml -f env/prod.yaml [-f override.yaml] [--all-rows]
+  helmtrace -f base.yaml -f env/prod.yaml [-f override.yaml] [--all-rows] [--plain]
+  helmtrace -k ./overlays/prod [--all-rows] [--plain]
 
 Flags:
 `)
@@ -30,12 +33,16 @@ Flags:
 	}
 	flag.Parse()
 
-	if len(files) == 0 {
+	if len(files) == 0 && kustomizeRoot == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
+	if len(files) > 0 && kustomizeRoot != "" {
+		fmt.Fprintln(os.Stderr, "error: -f and -k are mutually exclusive")
+		os.Exit(1)
+	}
 
-	layers, err := loadLayers(files)
+	layers, err := loadLayers(files, kustomizeRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -50,48 +57,15 @@ Flags:
 	}
 }
 
-// loadLayers reads each file and returns a slice of Layers in the same order.
-func loadLayers(files []string) ([]analyzer.Layer, error) {
-	layers := make([]analyzer.Layer, 0, len(files))
-	for _, path := range files {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", path, err)
-		}
-		var values map[string]interface{}
-		if err := yaml.Unmarshal(data, &values); err != nil {
-			return nil, fmt.Errorf("parsing %s: %w", path, err)
-		}
-		if values == nil {
-			values = map[string]interface{}{}
-		}
-		layers = append(layers, analyzer.Layer{
-			Name:   layerName(path),
-			Values: values,
-		})
+// loadLayers dispatches to the appropriate loader based on which flags were set.
+func loadLayers(files []string, kustomizeRoot string) ([]analyzer.Layer, error) {
+	var l loader.Loader
+	if kustomizeRoot != "" {
+		l = &loader.KustomizeLoader{Root: kustomizeRoot}
+	} else {
+		l = &loader.HelmLoader{Files: files}
 	}
-	return layers, nil
-}
-
-// layerName derives a display name from a file path by stripping directory
-// and extension, e.g. "env/prod.yaml" → "prod".
-func layerName(path string) string {
-	name := path
-	// Strip leading directories.
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' || path[i] == '\\' {
-			name = path[i+1:]
-			break
-		}
-	}
-	// Strip .yaml / .yml extension.
-	for _, ext := range []string{".yaml", ".yml"} {
-		if len(name) > len(ext) && name[len(name)-len(ext):] == ext {
-			name = name[:len(name)-len(ext)]
-			break
-		}
-	}
-	return name
+	return l.Load()
 }
 
 // layerFlags is a flag.Value that accumulates repeated -f arguments.
@@ -102,3 +76,4 @@ func (f *layerFlags) Set(v string) error {
 	*f = append(*f, v)
 	return nil
 }
+

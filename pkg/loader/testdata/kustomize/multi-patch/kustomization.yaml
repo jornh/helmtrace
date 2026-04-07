@@ -1,0 +1,9 @@
+resources:
+  - base.yaml
+
+# Three patches applied in order — each overrides a different concern.
+# helmtrace will show all four as separate layers, making precedence visible.
+patchesStrategicMerge:
+  - patch-env.yaml       # 1. environment-wide settings
+  - patch-ingress.yaml   # 2. ingress configuration
+  - patch-resources.yaml # 3. resource limits (highest precedence)

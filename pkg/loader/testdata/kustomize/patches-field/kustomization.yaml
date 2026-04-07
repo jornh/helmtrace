@@ -1,0 +1,7 @@
+resources:
+  - base.yaml
+
+# patches: is the unified field introduced in kustomize v4.
+# Supports both strategic merge patches (path only) and JSON patches (path + target).
+patches:
+  - path: prod.yaml

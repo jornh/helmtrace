@@ -1,0 +1,6 @@
+resources:
+  - base/
+
+# Strategic merge patch applied on top of the base overlay.
+patchesStrategicMerge:
+  - prod.yaml

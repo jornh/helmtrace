@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: myapp
+          image: myapp:1.0
+          env:
+            - name: DATABASE_HOST
+              value: db.internal
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: CACHE_HOST
+              value: redis.internal
