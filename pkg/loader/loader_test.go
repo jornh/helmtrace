@@ -198,18 +198,20 @@ func TestStripEnvelope(t *testing.T) {
 // ── LayerName ─────────────────────────────────────────────────────────────────
 
 func TestLayerName(t *testing.T) {
-	cases := []struct {
-		path string
-		want string
-	}{
-		{"base.yaml", "base"},
-		{"env/prod.yaml", "prod"},
-		{"a/b/c/override.yml", "override"},
-		{"noext", "noext"},
-	}
-	for _, c := range cases {
-		if got := LayerName(c.path); got != c.want {
-			t.Errorf("LayerName(%q) = %q, want %q", c.path, got, c.want)
-		}
-	}
+    tests := map[string]string{
+        "base/scg/values.yaml":          "base/scg",
+        "overlays/common/scg.yaml":      "scg",
+        "overlays/uat/scg/values.yaml":  "uat/scg",
+        "values.yaml":                   "values",
+        "uat.yaml":                      "uat",
+        "foo/bar/my-values.yml":         "my-values",
+    }
+
+    for input, expected := range tests {
+        got := deriveLayerLabel(input)
+        if got != expected {
+            t.Errorf("deriveLayerLabel(%q) = %q, want %q", input, got, expected)
+        }
+    }
 }
+	
