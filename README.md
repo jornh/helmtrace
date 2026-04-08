@@ -4,9 +4,9 @@ Context: You have a setup with several “layers” of helm values files. You wa
 
 ## What does it offer?
 
-- **Detect redundancy** — `redundant`: values set in a higher layer that are identical to what the lower layer already provides (DRY violations)
 - **Show provenance** — `prov | provenance`: for any key, which layer(s) define it and what each layer's value is
-- **Trim suggestions** — `trim`: flag keys that could be removed from a layer without changing the effective merged result
+- **Detect redundancy** — `redundant`: values set in a higher layer that are identical to what the lower layer already provides (DRY violations)
+- **Trim suggestions** — `trim`: flag keys that could be removed from a layer without changing the effective merged result (DRY it up!)
 
 To do that it will:
 
