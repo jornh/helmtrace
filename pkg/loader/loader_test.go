@@ -208,9 +208,9 @@ func TestLayerName(t *testing.T) {
     }
 
     for input, expected := range tests {
-        got := deriveLayerLabel(input)
+        got := LayerName(input)
         if got != expected {
-            t.Errorf("deriveLayerLabel(%q) = %q, want %q", input, got, expected)
+            t.Errorf("LayerName(%q) = %q, want %q", input, got, expected)
         }
     }
 }
