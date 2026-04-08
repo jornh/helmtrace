@@ -119,8 +119,8 @@ func TestKustomizeLoader_RecursiveBase(t *testing.T) {
 	if len(layers) != 2 {
 		t.Fatalf("got %d layers, want 2 (base values + prod patch)", len(layers))
 	}
-	if layers[0].Name != "values" {
-		t.Errorf("layers[0].Name = %q, want values", layers[0].Name)
+	if layers[0].Name != "recursive-base/base" {
+		t.Errorf("layers[0].Name = %q, want recursive-base/base", layers[0].Name)
 	}
 	if layers[1].Name != "prod" {
 		t.Errorf("layers[1].Name = %q, want prod", layers[1].Name)
@@ -198,18 +198,20 @@ func TestStripEnvelope(t *testing.T) {
 // ── LayerName ─────────────────────────────────────────────────────────────────
 
 func TestLayerName(t *testing.T) {
-	cases := []struct {
-		path string
-		want string
-	}{
-		{"base.yaml", "base"},
-		{"env/prod.yaml", "prod"},
-		{"a/b/c/override.yml", "override"},
-		{"noext", "noext"},
-	}
-	for _, c := range cases {
-		if got := LayerName(c.path); got != c.want {
-			t.Errorf("LayerName(%q) = %q, want %q", c.path, got, c.want)
-		}
-	}
+    tests := map[string]string{
+        "base/scg/values.yaml":          "base/scg",
+        "overlays/common/scg.yaml":      "scg",
+        "overlays/uat/scg/values.yaml":  "uat/scg",
+        "values.yaml":                   "values",
+        "uat.yaml":                      "uat",
+        "foo/bar/my-values.yml":         "my-values",
+    }
+
+    for input, expected := range tests {
+        got := LayerName(input)
+        if got != expected {
+            t.Errorf("LayerName(%q) = %q, want %q", input, got, expected)
+        }
+    }
 }
+	
