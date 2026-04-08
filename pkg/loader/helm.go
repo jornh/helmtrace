@@ -1,9 +1,10 @@
 package loader
 
 import (
-	"filepath"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
