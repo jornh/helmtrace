@@ -2,20 +2,30 @@ package analyzer
 
 import (
 	"fmt"
-    "reflect"
+	"reflect"
 	"strings"
 )
 
-// Layer represents a single Helm values file with a name and its parsed content.
+// Layer represents a single values file with a name and its parsed content.
+// ResourceKey is optionally set by loaders that understand Kubernetes structure
+// (e.g. KustomizeLoader) to identify which Kind/name resource this layer
+// belongs to. HelmLoader leaves it empty.
 type Layer struct {
-	Name   string
-	Values map[string]interface{}
+	Name        string
+	Values      map[string]interface{}
+	ResourceKey string // e.g. "Deployment/myapp", empty for Helm layers
 }
 
 // Source records a single layer's contribution to a key.
 type Source struct {
 	Layer string
 	Value interface{}
+	// Null is true when the layer explicitly sets this key to null, which
+	// suppresses any value from lower-precedence layers.
+	Null bool
+	// ResourceKey mirrors Layer.ResourceKey, carried through so renderers
+	// can group or filter by resource without re-joining to the layer list.
+	ResourceKey string
 }
 
 // ValueNode is the result for a single leaf key: the effective value and
@@ -32,6 +42,10 @@ func (n *ValueNode) IsRedundant(idx int) bool {
 	if idx <= 0 || idx >= len(n.Sources) {
 		return false
 	}
+	// Null overrides are never redundant — they actively suppress lower layers.
+	if n.Sources[idx].Null {
+		return false
+	}
 	// Find the effective value contributed by layers below idx.
 	effectiveBelow := n.Sources[idx-1].Value
 	for i := idx - 2; i >= 0; i-- {
@@ -39,7 +53,7 @@ func (n *ValueNode) IsRedundant(idx int) bool {
 			effectiveBelow = n.Sources[i].Value
 		}
 	}
-	return deepEqual(n.Sources[idx].Value, effectiveBelow)
+	return reflect.DeepEqual(n.Sources[idx].Value, effectiveBelow)
 }
 
 // Options controls what Analyze returns.
@@ -87,15 +101,18 @@ func buildNode(path string, layers []Layer) ValueNode {
 	node := ValueNode{Key: path}
 
 	for _, l := range layers {
-		val, ok := getPath(l.Values, path)
-		if !ok {
+		val, found, null := getPath(l.Values, path)
+		if !found {
 			continue
 		}
 		node.Sources = append(node.Sources, Source{
-			Layer: l.Name,
-			Value: val,
+			Layer:       l.Name,
+			Value:       val,
+			Null:        null,
+			ResourceKey: l.ResourceKey,
 		})
-		node.EffectiveValue = val // last write wins
+		// A null override suppresses lower layers: effective value becomes nil.
+		node.EffectiveValue = val
 	}
 
 	return node
@@ -132,23 +149,32 @@ func walkValue(v interface{}, prefix string) []string {
 		}
 		return paths
 	default:
+		// nil (explicit YAML null) and scalars are both leaves.
 		return []string{prefix}
 	}
 }
 
 // getPath retrieves the value at a dot-separated path from a nested
 // map/slice structure. Numeric segments index into slices (e.g. "foo.0.bar").
-// Returns (value, true) if found, (nil, false) if not.
-func getPath(m map[string]interface{}, path string) (interface{}, bool) {
+// Returns (value, found, isNull):
+//   - found=false means the key does not exist in this layer
+//   - found=true, isNull=true means the key is explicitly set to null
+//   - found=true, isNull=false means the key has a non-null value
+func getPath(m map[string]interface{}, path string) (interface{}, bool, bool) {
 	parts := strings.SplitN(path, ".", 2)
 	v, ok := m[parts[0]]
 	if !ok {
-		return nil, false
+		return nil, false, false
 	}
 	if len(parts) == 1 {
-		return v, true
+		return v, true, v == nil
 	}
-	return getPathValue(v, parts[1])
+	if v == nil {
+		// Explicit null at an intermediate key — path cannot continue.
+		return nil, false, false
+	}
+	val, found := getPathValue(v, parts[1])
+	return val, found, found && val == nil
 }
 
 // getPathValue continues path traversal into any value type.
@@ -162,6 +188,9 @@ func getPathValue(v interface{}, path string) (interface{}, bool) {
 		}
 		if len(parts) == 1 {
 			return child, true
+		}
+		if child == nil {
+			return nil, false
 		}
 		return getPathValue(child, parts[1])
 	case []interface{}:
@@ -178,16 +207,18 @@ func getPathValue(v interface{}, path string) (interface{}, bool) {
 		if len(parts) == 1 {
 			return val[idx], true
 		}
+		if val[idx] == nil {
+			return nil, false
+		}
 		return getPathValue(val[idx], parts[1])
 	default:
 		return nil, false
 	}
 }
 
-// deepEqual compares two values for equality, handling the map types that
-// come out of YAML unmarshalling.
+// deepEqual compares two values for structural equality.
 func deepEqual(a, b interface{}) bool {
-    return reflect.DeepEqual(a, b)
+	return reflect.DeepEqual(a, b)
 }
 
 // sortNodes sorts ValueNodes by key for deterministic output.

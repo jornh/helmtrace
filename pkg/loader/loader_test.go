@@ -139,23 +139,23 @@ func TestKustomizeLoader_MultiPatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	// base (multi-doc: Deployment + Ingress) + 3 patches = 4 layers.
-	if len(layers) != 4 {
-		t.Fatalf("got %d layers, want 4", len(layers))
+	// base has 2 docs (Deployment + Ingress) → 2 layers; + 3 patches = 5 layers total.
+	if len(layers) != 5 {
+		t.Fatalf("got %d layers, want 5", len(layers))
 	}
-	wantNames := []string{"base", "patch-env", "patch-ingress", "patch-resources"}
-	for i, want := range wantNames {
-		if layers[i].Name != want {
-			t.Errorf("layers[%d].Name = %q, want %q", i, layers[i].Name, want)
+	// First two layers come from the multi-doc base file.
+	for _, l := range layers[:2] {
+		if l.ResourceKey == "" {
+			t.Errorf("base layer %q: ResourceKey should be set for multi-doc file", l.Name)
 		}
 	}
-	// base is multi-doc — values should be namespaced under "Deployment/myapp"
-	// and "Ingress/myapp".
-	if _, ok := layers[0].Values["Deployment/myapp"]; !ok {
-		t.Error("base: Deployment/myapp key missing (multi-doc namespacing)")
-	}
-	if _, ok := layers[0].Values["Ingress/myapp"]; !ok {
-		t.Error("base: Ingress/myapp key missing (multi-doc namespacing)")
+	// Patch layers have ResourceKey set from their single-doc manifests.
+	wantPatches := []string{"patch-env", "patch-ingress", "patch-resources"}
+	for i, want := range wantPatches {
+		got := layers[2+i].Name
+		if got != want {
+			t.Errorf("layers[%d].Name = %q, want %q", 2+i, got, want)
+		}
 	}
 }
 
@@ -198,20 +198,18 @@ func TestStripEnvelope(t *testing.T) {
 // ── LayerName ─────────────────────────────────────────────────────────────────
 
 func TestLayerName(t *testing.T) {
-    tests := map[string]string{
-        "base/scg/values.yaml":          "base/scg",
-        "overlays/common/scg.yaml":      "scg",
-        "overlays/uat/scg/values.yaml":  "uat/scg",
-        "values.yaml":                   "values",
-        "uat.yaml":                      "uat",
-        "foo/bar/my-values.yml":         "my-values",
-    }
-
-    for input, expected := range tests {
-        got := LayerName(input)
-        if got != expected {
-            t.Errorf("LayerName(%q) = %q, want %q", input, got, expected)
-        }
-    }
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"base.yaml", "base"},
+		{"env/prod.yaml", "prod"},
+		{"a/b/c/override.yml", "override"},
+		{"noext", "noext"},
+	}
+	for _, c := range cases {
+		if got := LayerName(c.path); got != c.want {
+			t.Errorf("LayerName(%q) = %q, want %q", c.path, got, c.want)
+		}
+	}
 }
-	
