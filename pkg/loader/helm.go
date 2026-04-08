@@ -47,7 +47,7 @@ func (h *HelmLoader) Load() ([]analyzer.Layer, error) {
 //   - Otherwise:
 //         use the filename without extension (e.g. uat, scg, my-values)
 //   - If the parent directory has multiple components, use the last two.
-func layerName(path string) string {
+func LayerName(path string) string {
     p := filepath.Clean(path)
 
     dir := filepath.Dir(p)
