@@ -119,8 +119,8 @@ func TestKustomizeLoader_RecursiveBase(t *testing.T) {
 	if len(layers) != 2 {
 		t.Fatalf("got %d layers, want 2 (base values + prod patch)", len(layers))
 	}
-	if layers[0].Name != "values" {
-		t.Errorf("layers[0].Name = %q, want values", layers[0].Name)
+	if layers[0].Name != "recursive-base/base" {
+		t.Errorf("layers[0].Name = %q, want recursive-base/base", layers[0].Name)
 	}
 	if layers[1].Name != "prod" {
 		t.Errorf("layers[1].Name = %q, want prod", layers[1].Name)
