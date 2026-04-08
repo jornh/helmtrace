@@ -1,6 +1,7 @@
 package loader
 
 import (
+	"filepath"
 	"fmt"
 	"os"
 
@@ -38,21 +39,36 @@ func (h *HelmLoader) Load() ([]analyzer.Layer, error) {
 	return layers, nil
 }
 
-// LayerName derives a display name from a file path by stripping the
-// directory and extension, e.g. "env/prod.yaml" → "prod".
-func LayerName(path string) string {
-	name := path
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' || path[i] == '\\' {
-			name = path[i+1:]
-			break
-		}
-	}
-	for _, ext := range []string{".yaml", ".yml"} {
-		if len(name) > len(ext) && name[len(name)-len(ext):] == ext {
-			name = name[:len(name)-len(ext)]
-			break
-		}
-	}
-	return name
+// LayerName returns a human-friendly label for a values file.
+// Rules:
+//   - If the file is named values.yaml or values.yml:
+//         use the parent directory name (e.g. base/scg)
+//   - Otherwise:
+//         use the filename without extension (e.g. uat, scg, my-values)
+//   - If the parent directory has multiple components, use the last two.
+func layerName(path string) string {
+    p := filepath.Clean(path)
+
+    dir := filepath.Dir(p)
+    base := filepath.Base(p)
+    stem := strings.TrimSuffix(base, filepath.Ext(base))
+
+    // If it's not a values.yaml file, use the filename as the label.
+    if !strings.EqualFold(base, "values.yaml") &&
+       !strings.EqualFold(base, "values.yml") {
+        return stem
+    }
+
+    // Otherwise derive from directory structure.
+    if dir == "." || dir == "/" {
+        return stem // fallback
+    }
+
+    parts := strings.Split(filepath.ToSlash(dir), "/")
+    n := len(parts)
+
+    if n >= 2 {
+        return parts[n-2] + "/" + parts[n-1]
+    }
+    return parts[n-1]
 }
