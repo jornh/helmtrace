@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
       -X main.CommitDate=${COMMIT_DATE} \
       -X main.TreeState=${TREE_STATE}" \
     -o helmtrace \
-    ./cmd/helmtrace
+    ./helmtrace
 
 # ── runtime ──────────────────────────────────────────────────────────────────
 FROM scratch
