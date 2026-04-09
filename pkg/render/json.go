@@ -34,30 +34,31 @@ type jsonOutput struct {
 }
 
 // JSON writes a JSON representation of the provenance data to w.
-// When sources carry ResourceKey values (kustomize mode), output is grouped
+// When nodes carry ResourceKey values (kustomize mode), output is grouped
 // under a "resources" map keyed by "Kind/name". Otherwise a flat "keys"
 // array is emitted.
 func JSON(w io.Writer, nodes []analyzer.ValueNode, layers []analyzer.Layer) error {
-	// Detect whether any source carries a resource key.
-	hasResourceKeys := false
-	for _, n := range nodes {
-		for _, s := range n.Sources {
-			if s.ResourceKey != "" {
-				hasResourceKeys = true
-				break
-			}
-		}
-		if hasResourceKeys {
-			break
-		}
-	}
+	groups := BuildGroups(nodes, layers)
 
 	out := jsonOutput{}
 
-	if !hasResourceKeys {
-		out.Flat = flatNodes(nodes, layers)
+	if len(groups) == 1 && groups[0].ResourceKey == "" {
+		// Flat / Helm mode.
+		out.Flat = make([]jsonNode, 0, len(groups[0].Nodes))
+		for _, n := range groups[0].Nodes {
+			out.Flat = append(out.Flat, toJSONNode(n, groups[0].Layers))
+		}
 	} else {
-		out.ByResource = groupedNodes(nodes, layers)
+		// Kustomize mode — one entry per resource group.
+		out.ByResource = make(map[string][]jsonNode, len(groups))
+		for _, g := range groups {
+			rk := g.ResourceKey
+			jNodes := make([]jsonNode, 0, len(g.Nodes))
+			for _, n := range g.Nodes {
+				jNodes = append(jNodes, toJSONNode(n, g.Layers))
+			}
+			out.ByResource[rk] = jNodes
+		}
 	}
 
 	enc := json.NewEncoder(w)
@@ -66,57 +67,6 @@ func JSON(w io.Writer, nodes []analyzer.ValueNode, layers []analyzer.Layer) erro
 		return fmt.Errorf("encoding JSON: %w", err)
 	}
 	return nil
-}
-
-// flatNodes converts nodes to a flat slice with redundancy annotations.
-func flatNodes(nodes []analyzer.ValueNode, layers []analyzer.Layer) []jsonNode {
-	result := make([]jsonNode, 0, len(nodes))
-	for _, n := range nodes {
-		result = append(result, toJSONNode(n, layers))
-	}
-	return result
-}
-
-// groupedNodes groups nodes by the ResourceKey of their sources.
-// A node may appear under multiple resource keys if its sources span resources.
-func groupedNodes(nodes []analyzer.ValueNode, layers []analyzer.Layer) map[string][]jsonNode {
-	// Preserve insertion order of resource keys for stable output.
-	order := []string{}
-	seen := map[string]bool{}
-	groups := map[string][]jsonNode{}
-
-	for _, n := range nodes {
-		// Collect distinct resource keys referenced by this node's sources.
-		nodeKeys := []string{}
-		nodeKeySeen := map[string]bool{}
-		for _, s := range n.Sources {
-			rk := s.ResourceKey
-			if rk == "" {
-				rk = "_" // ungrouped sources go under a sentinel key
-			}
-			if !nodeKeySeen[rk] {
-				nodeKeys = append(nodeKeys, rk)
-				nodeKeySeen[rk] = true
-			}
-		}
-
-		jn := toJSONNode(n, layers)
-		for _, rk := range nodeKeys {
-			if !seen[rk] {
-				order = append(order, rk)
-				seen[rk] = true
-			}
-			groups[rk] = append(groups[rk], jn)
-		}
-	}
-
-	// Re-build as ordered map (Go maps have no order, but JSON output is
-	// produced in insertion order when we iterate order slice).
-	ordered := make(map[string][]jsonNode, len(order))
-	for _, rk := range order {
-		ordered[rk] = groups[rk]
-	}
-	return ordered
 }
 
 // toJSONNode converts a ValueNode to its JSON representation, annotating

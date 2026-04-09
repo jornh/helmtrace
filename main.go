@@ -55,8 +55,14 @@ Flags:
 		os.Exit(1)
 	}
 
+	fmt.Println("layers:")
+	fmt.Fprintln(os.Stdout, layers)
+
 	opts := analyzer.Options{MultiLayerOnly: !allRows}
 	nodes := analyzer.Analyze(layers, opts)
+
+	fmt.Println("\n\n nodes:")
+	fmt.Fprintln(os.Stdout, nodes)
 
 	switch output {
 	case "json":
@@ -90,4 +96,3 @@ func (f *layerFlags) Set(v string) error {
 	*f = append(*f, v)
 	return nil
 }
-

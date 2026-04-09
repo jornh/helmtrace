@@ -9,29 +9,60 @@ import (
 )
 
 // Table writes a human-readable provenance table to w.
+// When nodes carry ResourceKey values (kustomize mode), output is split into
+// one labelled section per resource. Otherwise a single flat table is written.
 //
-// Example output:
+// Example output (kustomize mode):
 //
-//	KEY                   base        prod        override    EFFECTIVE
-//	database.host         db.internal db.prod     —           db.prod
-//	database.port         5432        5432 ✕      —           5432
-//	replicaCount          1           3           5           5
+//	Deployment/myapp
+//	────────────────────────────────────────────────────
+//	KEY                      base        prod      EFFECTIVE
+//	spec.replicas            1           3         3
+//	spec.template.spec.co…   myapp:1.0   myapp:2…  myapp:2.0
+//
+//	Ingress/myapp
+//	────────────────────────────────────────────────────
+//	KEY                      base   prod            EFFECTIVE
+//	spec.rules.0.host        —      myapp.prod.ex…  myapp.prod.example.com
 //
 // A ✕ marks values that are redundant (identical to effective value from lower layers).
 func Table(w io.Writer, nodes []analyzer.ValueNode, layers []analyzer.Layer) {
+	groups := BuildGroups(nodes, layers)
+	hasRedundant := false
+
+	for i, g := range groups {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		if g.ResourceKey != "" && g.ResourceKey != "_" {
+			fmt.Fprintf(w, "%s\n", g.ResourceKey)
+		}
+		redundant := tableSection(w, g.Nodes, g.Layers)
+		if redundant {
+			hasRedundant = true
+		}
+	}
+
+	if hasRedundant {
+		fmt.Fprintln(w, "\n✕ = redundant (value is identical to effective value from lower layers)")
+	}
+}
+
+// tableSection renders one table section and returns true if any redundant
+// values were found.
+func tableSection(w io.Writer, nodes []analyzer.ValueNode, layers []analyzer.Layer) bool {
 	layerNames := make([]string, len(layers))
 	for i, l := range layers {
 		layerNames[i] = l.Name
 	}
 
-	// Column widths: key column + one per layer + effective.
+	// Column widths.
 	keyWidth := len("KEY")
 	for _, n := range nodes {
 		if len(n.Key) > keyWidth {
 			keyWidth = len(n.Key)
 		}
 	}
-
 	colWidth := len("EFFECTIVE")
 	for _, name := range layerNames {
 		if len(name) > colWidth {
@@ -48,7 +79,7 @@ func Table(w io.Writer, nodes []analyzer.ValueNode, layers []analyzer.Layer) {
 			colWidth = w
 		}
 	}
-	colWidth += 2 // padding
+	colWidth += 2
 
 	// Header.
 	fmt.Fprintf(w, "%-*s", keyWidth+2, "KEY")
@@ -58,15 +89,14 @@ func Table(w io.Writer, nodes []analyzer.ValueNode, layers []analyzer.Layer) {
 	fmt.Fprintln(w, "EFFECTIVE")
 	fmt.Fprintln(w, strings.Repeat("─", keyWidth+2+colWidth*len(layerNames)+len("EFFECTIVE")))
 
-	// Build a lookup: layer name → index, for IsRedundant calls.
+	// Layer name → index for IsRedundant.
 	layerIdx := map[string]int{}
 	for i, l := range layers {
 		layerIdx[l.Name] = i
 	}
 
-	// Rows.
+	hasRedundant := false
 	for _, n := range nodes {
-		// Index sources by layer name for O(1) lookup per row.
 		sourceByLayer := map[string]analyzer.Source{}
 		for _, s := range n.Sources {
 			sourceByLayer[s.Layer] = s
@@ -82,25 +112,14 @@ func Table(w io.Writer, nodes []analyzer.ValueNode, layers []analyzer.Layer) {
 			}
 			cell := fmt.Sprintf("%v", s.Value)
 			if n.IsRedundant(i) {
+				hasRedundant = true
 				cell += " ✕"
 			}
 			fmt.Fprintf(w, "%-*s", colWidth, cell)
 		}
-
 		fmt.Fprintln(w, fmt.Sprintf("%v", n.EffectiveValue))
 	}
 
-	// Legend if any redundancies exist.
-	hasRedundant := false
-	for _, n := range nodes {
-		for i := range layers {
-			if n.IsRedundant(i) {
-				hasRedundant = true
-				break
-			}
-		}
-	}
-	if hasRedundant {
-		fmt.Fprintln(w, "\n✕ = redundant (value is identical to effective value from lower layers)")
-	}
+	return hasRedundant
 }
+
