@@ -10,7 +10,27 @@ import (
 	"helmtrace/pkg/render"
 )
 
+// Build-time variables populated by ldflags:
+//
+//	-X main.Version={{ .Env.VERSION }}
+//	-X main.Commit={{ .Env.COMMIT }}
+//	-X main.CommitDate={{ .Env.COMMIT_DATE }}
+//	-X main.TreeState={{ .Env.TREE_STATE }}
+var (
+	Version    = "dev"
+	Commit     = "none"
+	CommitDate = "unknown"
+	TreeState  = "unknown"
+)
+
 func main() {
+	// Top-level subcommand dispatch before flag parsing so that
+	// `helmtrace version` works without any other flags.
+	if len(os.Args) > 1 && os.Args[1] == "version" {
+		printVersion()
+		return
+	}
+
 	var files layerFlags
 	var kustomizeRoot string
 	var allRows bool
@@ -22,10 +42,12 @@ func main() {
 	flag.BoolVar(&allRows, "all-rows", false, "show all keys, including those that appear in only one layer")
 	flag.BoolVar(&plain, "plain", false, "plain text output without colours or styling")
 	flag.StringVar(&output, "output", "tui", "output format: tui, plain, json")
+	flag.StringVar(&output, "o", "tui", "output format (shorthand)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `helmtrace - show provenance of values across layered Helm values files or kustomize overlays
 
 Usage:
+  helmtrace version
   helmtrace -f base.yaml -f env/prod.yaml [-f override.yaml] [--all-rows] [--output tui|plain|json]
   helmtrace -k ./overlays/prod [--all-rows] [--output tui|plain|json]
 
@@ -55,14 +77,8 @@ Flags:
 		os.Exit(1)
 	}
 
-	fmt.Println("layers:")
-	fmt.Fprintln(os.Stdout, layers)
-
 	opts := analyzer.Options{MultiLayerOnly: !allRows}
 	nodes := analyzer.Analyze(layers, opts)
-
-	fmt.Println("\n\n nodes:")
-	fmt.Fprintln(os.Stdout, nodes)
 
 	switch output {
 	case "json":
@@ -75,6 +91,17 @@ Flags:
 	default:
 		render.TUITable(nodes, layers)
 	}
+}
+
+// printVersion writes build info to stdout.
+func printVersion() {
+	dirty := ""
+	if TreeState == "dirty" {
+		dirty = " (dirty)"
+	}
+	fmt.Printf("helmtrace %s%s\n", Version, dirty)
+	fmt.Printf("  commit:  %s\n", Commit)
+	fmt.Printf("  date:    %s\n", CommitDate)
 }
 
 // loadLayers dispatches to the appropriate loader based on which flags were set.
