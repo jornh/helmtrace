@@ -63,23 +63,23 @@ func loadKustomizeDir(dir string) ([]analyzer.Layer, error) {
 			}
 			layers = append(layers, baseLayers...)
 		} else {
-			// Resource is a plain values file.
-			layer, err := loadYAMLLayer(resPath)
+			// Resource is a plain values file — may be multi-doc.
+			fileLayers, err := loadYAMLLayers(resPath)
 			if err != nil {
 				return nil, err
 			}
-			layers = append(layers, layer)
+			layers = append(layers, fileLayers...)
 		}
 	}
 
 	// Strategic merge patches from patchesStrategicMerge (deprecated field).
 	for _, p := range kfile.PatchesStrategicMerge {
 		patchPath := filepath.Join(dir, p)
-		layer, err := loadYAMLLayer(patchPath)
+		fileLayers, err := loadYAMLLayers(patchPath)
 		if err != nil {
 			return nil, err
 		}
-		layers = append(layers, layer)
+		layers = append(layers, fileLayers...)
 	}
 
 	// Strategic merge patches from the unified patches field (v4+).
@@ -89,11 +89,11 @@ func loadKustomizeDir(dir string) ([]analyzer.Layer, error) {
 			continue
 		}
 		patchPath := filepath.Join(dir, p.Path)
-		layer, err := loadYAMLLayer(patchPath)
+		fileLayers, err := loadYAMLLayers(patchPath)
 		if err != nil {
 			return nil, err
 		}
-		layers = append(layers, layer)
+		layers = append(layers, fileLayers...)
 	}
 
 	return layers, nil
@@ -120,22 +120,22 @@ func readKustomizationFile(dir string) (*kustomizationFile, error) {
 	return nil, fmt.Errorf("no kustomization.yaml found in %s", dir)
 }
 
-// loadYAMLLayer reads a YAML file (single or multi-document) and returns it
-// as a Layer. Multiple documents are merged into a single values map keyed by
-// "kind/name" to avoid collisions, then the Kubernetes envelope is stripped so
-// the analyzer only sees spec/data/stringData fields.
-func loadYAMLLayer(path string) (analyzer.Layer, error) {
+// loadYAMLLayers reads a YAML file and returns one Layer per document.
+// Each document has its Kubernetes envelope stripped and its ResourceKey set.
+// Single-document files return a slice of length 1.
+func loadYAMLLayers(path string) ([]analyzer.Layer, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return analyzer.Layer{}, fmt.Errorf("reading %s: %w", path, err)
+		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 
 	docs, err := decodeAllYAML(data)
 	if err != nil {
-		return analyzer.Layer{}, fmt.Errorf("parsing %s: %w", path, err)
+		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
 
-	merged := map[string]interface{}{}
+	name := LayerName(path)
+	var layers []analyzer.Layer
 	for _, doc := range docs {
 		if doc == nil {
 			continue
@@ -144,23 +144,25 @@ func loadYAMLLayer(path string) (analyzer.Layer, error) {
 		if len(stripped) == 0 {
 			continue
 		}
-		// Namespace multi-doc values under "kind/name" to avoid key collisions
-		// when a file contains e.g. a Deployment and an Ingress.
-		key := resourceKey(doc)
-		if key == "" || len(docs) == 1 {
-			// Single doc — merge directly at the top level.
-			for k, v := range stripped {
-				merged[k] = v
-			}
-		} else {
-			merged[key] = stripped
+		rk := resourceKey(doc)
+		// For multi-doc files suffix the layer name with the resource key so
+		// each document gets a distinct, readable column header.
+		layerName := name
+		if len(docs) > 1 && rk != "" {
+			layerName = name + ":" + rk
 		}
+		layers = append(layers, analyzer.Layer{
+			Name:        layerName,
+			Values:      stripped,
+			ResourceKey: rk,
+		})
 	}
-
-	return analyzer.Layer{
-		Name:   LayerName(path),
-		Values: merged,
-	}, nil
+	if len(layers) == 0 {
+		// File was empty or contained only stripped envelopes — return one
+		// empty layer so callers don't have to handle a nil slice.
+		layers = []analyzer.Layer{{Name: name, Values: map[string]interface{}{}}}
+	}
+	return layers, nil
 }
 
 // decodeAllYAML decodes all YAML documents from data, returning one map per

@@ -67,23 +67,23 @@ func TestGetPath(t *testing.T) {
 			map[string]interface{}{"baz": 42},
 		},
 	}
-	v, ok := getPath(m, "database.host")
+	v, ok, _ := getPath(m, "database.host")
 	if !ok || v != "db.internal" {
 		t.Errorf("got (%v, %v), want (db.internal, true)", v, ok)
 	}
-	_, ok = getPath(m, "database.missing")
+	_, ok, _ = getPath(m, "database.missing")
 	if ok {
 		t.Error("expected false for missing key")
 	}
-	v, ok = getPath(m, "foo.0.bar")
+	v, ok, _ = getPath(m, "foo.0.bar")
 	if !ok || v != "barval" {
 		t.Errorf("foo.0.bar: got (%v, %v), want (barval, true)", v, ok)
 	}
-	v, ok = getPath(m, "foo.1.baz")
+	v, ok, _ = getPath(m, "foo.1.baz")
 	if !ok || v != 42 {
 		t.Errorf("foo.1.baz: got (%v, %v), want (42, true)", v, ok)
 	}
-	_, ok = getPath(m, "foo.5.bar")
+	_, ok, _ = getPath(m, "foo.5.bar")
 	if ok {
 		t.Error("expected false for out-of-bounds index")
 	}

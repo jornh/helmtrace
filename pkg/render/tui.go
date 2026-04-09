@@ -41,7 +41,38 @@ var (
 
 // TUITable renders a provenance table with lipgloss styling, fitting output
 // to the terminal width. Long keys and values are truncated with an ellipsis.
+// When nodes carry ResourceKey values (kustomize mode), output is split into
+// one labelled section per resource.
 func TUITable(nodes []analyzer.ValueNode, layers []analyzer.Layer) {
+	groups := BuildGroups(nodes, layers)
+	hasRedundant := false
+
+	groupHeaderStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("14")) // bright cyan
+
+	for i, g := range groups {
+		if i > 0 {
+			fmt.Println()
+		}
+		if g.ResourceKey != "" && g.ResourceKey != "_" {
+			fmt.Println(groupHeaderStyle.Render(g.ResourceKey))
+		}
+		redundant := tuiSection(g.Nodes, g.Layers)
+		if redundant {
+			hasRedundant = true
+		}
+	}
+
+	if hasRedundant {
+		fmt.Println()
+		fmt.Println(legendStyle.Render("✕ = redundant (identical to effective value from lower layers)"))
+	}
+}
+
+// tuiSection renders one lipgloss-styled table section and returns true if
+// any redundant values were found.
+func tuiSection(nodes []analyzer.ValueNode, layers []analyzer.Layer) bool {
 	termWidth := terminalWidth()
 
 	layerNames := make([]string, len(layers))
@@ -56,7 +87,6 @@ func TUITable(nodes []analyzer.ValueNode, layers []analyzer.Layer) {
 			keyWidth = len(n.Key)
 		}
 	}
-
 	colWidth := len("EFFECTIVE")
 	for _, name := range layerNames {
 		if len(name) > colWidth {
@@ -74,15 +104,13 @@ func TUITable(nodes []analyzer.ValueNode, layers []analyzer.Layer) {
 		}
 	}
 
-	// Fit to terminal: distribute available width across columns.
-	// Layout: keyCol  [layerCol * N]  effectiveCol
+	// Fit to terminal width.
 	numCols := 1 + len(layerNames) + 1
 	colPad := 2
 	available := termWidth - (numCols * colPad)
 	if available < numCols*8 {
-		available = numCols * 8 // minimum usable width
+		available = numCols * 8
 	}
-	// Give key column up to 35% of available, split rest equally.
 	maxKeyWidth := available * 35 / 100
 	if keyWidth > maxKeyWidth {
 		keyWidth = maxKeyWidth
@@ -109,13 +137,12 @@ func TUITable(nodes []analyzer.ValueNode, layers []analyzer.Layer) {
 	divLen := keyWidth + colPad + (colWidth+colPad)*(len(layerNames)+1)
 	fmt.Println(dividerStyle.Render(strings.Repeat("─", divLen)))
 
-	// Layer index for IsRedundant.
+	// Layer name → index for IsRedundant.
 	layerIdx := map[string]int{}
 	for i, l := range layers {
 		layerIdx[l.Name] = i
 	}
 
-	// Data rows.
 	hasRedundant := false
 	for _, n := range nodes {
 		sourceByLayer := map[string]analyzer.Source{}
@@ -131,7 +158,7 @@ func TUITable(nodes []analyzer.ValueNode, layers []analyzer.Layer) {
 				row += missingStyle.Width(colWidth + colPad).Render(truncate("—", colWidth))
 				continue
 			}
-			cell := truncate(fmt.Sprintf("%v", s.Value), colWidth-2) // -2 for ✕ room
+			cell := truncate(fmt.Sprintf("%v", s.Value), colWidth-2)
 			if n.IsRedundant(i) {
 				hasRedundant = true
 				row += redundantStyle.Width(colWidth + colPad).Render(cell + " ✕")
@@ -145,11 +172,7 @@ func TUITable(nodes []analyzer.ValueNode, layers []analyzer.Layer) {
 		fmt.Println(row)
 	}
 
-	// Legend.
-	if hasRedundant {
-		fmt.Println()
-		fmt.Println(legendStyle.Render("✕ = redundant (identical to effective value from lower layers)"))
-	}
+	return hasRedundant
 }
 
 // truncate shortens s to maxLen runes, appending … if trimmed.
