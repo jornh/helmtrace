@@ -1,0 +1,74 @@
+name: Build and push container
+
+on:
+  push:
+    branches: [main]
+    tags:    ['v*.*.*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY:   ghcr.io
+  IMAGE_NAME: ${{ github.repository }}  # jornh/helmtrace → ghcr.io/jornh/helmtrace
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write   # required to push to ghcr.io
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for git describe / tag detection
+
+      - name: Set build metadata
+        id: meta_vars
+        run: |
+          echo "VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" >> $GITHUB_OUTPUT
+          echo "COMMIT=$(git rev-parse --short HEAD)"                                     >> $GITHUB_OUTPUT
+          echo "COMMIT_DATE=$(git log -1 --format=%cI)"                                   >> $GITHUB_OUTPUT
+          echo "TREE_STATE=$([ -z "$(git status --porcelain)" ] && echo clean || echo dirty)" >> $GITHUB_OUTPUT
+
+      - name: Extract Docker metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # semver tags: v1.2.3 → 1.2.3, 1.2, 1
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            # branch + sha for main pushes: main-abc1234
+            type=sha,prefix={{branch}}-,enable=${{ github.ref_type == 'branch' }}
+            # latest only on version tags
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+
+      - name: Log in to ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build (and push on non-PR)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags:    ${{ steps.meta.outputs.tags }}
+          labels:  ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta_vars.outputs.VERSION }}
+            COMMIT=${{ steps.meta_vars.outputs.COMMIT }}
+            COMMIT_DATE=${{ steps.meta_vars.outputs.COMMIT_DATE }}
+            TREE_STATE=${{ steps.meta_vars.outputs.TREE_STATE }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
