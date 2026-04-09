@@ -29,4 +29,4 @@ jobs:
 
     
     - uses: ko-build/setup-ko@v0.8
-    - run: ko build
+    #- run: ko build
