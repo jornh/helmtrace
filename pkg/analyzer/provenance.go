@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Layer represents a single values file with a name and its parsed content.
@@ -12,14 +14,32 @@ import (
 // belongs to. HelmLoader leaves it empty.
 type Layer struct {
 	Name        string
-	Values      map[string]interface{}
-	ResourceKey string // e.g. "Deployment/myapp", empty for Helm layers
+	FilePath    string                 // absolute or relative path to the source file
+	Values      map[string]interface{} // decoded values for analysis
+	Node        *yaml.Node             // raw AST for line/column resolution; may be nil
+	ResourceKey string                 // e.g. "Deployment/myapp", empty for Helm layers
+}
+
+// SourceLocation records where in a source file a value is defined.
+type SourceLocation struct {
+	File   string
+	Line   int
+	Column int
+}
+
+// String returns a compact "file:line:col" representation.
+func (l SourceLocation) String() string {
+	if l.File == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d:%d", l.File, l.Line, l.Column)
 }
 
 // Source records a single layer's contribution to a key.
 type Source struct {
-	Layer string
-	Value interface{}
+	Layer    string
+	Value    interface{}
+	Location *SourceLocation // nil when the layer has no Node (e.g. inline test fixtures)
 	// Null is true when the layer explicitly sets this key to null, which
 	// suppresses any value from lower-precedence layers.
 	Null bool
@@ -105,11 +125,16 @@ func buildNode(path string, layers []Layer) ValueNode {
 		if !found {
 			continue
 		}
+		var loc *SourceLocation
+		if l.Node != nil {
+			loc = nodeAt(l.Node, path, l.FilePath)
+		}
 		node.Sources = append(node.Sources, Source{
 			Layer:       l.Name,
 			Value:       val,
 			Null:        null,
 			ResourceKey: l.ResourceKey,
+			Location:    loc,
 		})
 		// A null override suppresses lower layers: effective value becomes nil.
 		node.EffectiveValue = val

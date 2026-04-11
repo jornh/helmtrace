@@ -41,6 +41,9 @@ type jsonViolation struct {
 	Key      string      `json:"key"`
 	Layer    string      `json:"layer"`
 	Value    interface{} `json:"value"`
+	File     string      `json:"file,omitempty"`
+	Line     int         `json:"line,omitempty"`
+	Column   int         `json:"column,omitempty"`
 	Severity string      `json:"severity"`
 	Message  string      `json:"message"`
 }
@@ -49,13 +52,19 @@ type jsonViolation struct {
 func PrintJSON(w io.Writer, violations []Violation) error {
 	out := make([]jsonViolation, len(violations))
 	for i, v := range violations {
-		out[i] = jsonViolation{
+		jv := jsonViolation{
 			Key:      v.Key,
 			Layer:    v.Layer,
 			Value:    v.Value,
 			Severity: string(v.Severity),
 			Message:  v.Message,
 		}
+		if v.Location != nil {
+			jv.File   = v.Location.File
+			jv.Line   = v.Location.Line
+			jv.Column = v.Location.Column
+		}
+		out[i] = jv
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
