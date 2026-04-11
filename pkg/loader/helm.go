@@ -32,9 +32,15 @@ func (h *HelmLoader) Load() ([]analyzer.Layer, error) {
 		if values == nil {
 			values = map[string]interface{}{}
 		}
+		var node yaml.Node
+		if err := yaml.Unmarshal(data, &node); err != nil {
+			return nil, fmt.Errorf("parsing AST %s: %w", path, err)
+		}
 		layers = append(layers, analyzer.Layer{
-			Name:   LayerName(path),
-			Values: values,
+			Name:     LayerName(path),
+			FilePath: path,
+			Values:   values,
+			Node:     &node,
 		})
 	}
 	return layers, nil

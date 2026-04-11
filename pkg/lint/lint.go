@@ -16,9 +16,10 @@ const (
 
 // Violation describes a single lint finding.
 type Violation struct {
-	Key      string   // dot-separated path, e.g. "database.port"
-	Layer    string   // layer name where the redundancy occurs
+	Key      string                    // dot-separated path, e.g. "database.port"
+	Layer    string                    // layer name where the redundancy occurs
 	Value    interface{}
+	Location *analyzer.SourceLocation  // file/line/col where the value is defined; may be nil
 	Severity Severity
 	Message  string
 }
@@ -55,15 +56,23 @@ func Run(nodes []analyzer.ValueNode, layers []analyzer.Layer, opts Options) []Vi
 			if opts.FailOnRedundant {
 				sev = SeverityError
 			}
+			msg := fmt.Sprintf(
+				"%q in layer %q is redundant: identical to effective value from lower layers",
+				n.Key, s.Layer,
+			)
+			if s.Location != nil {
+				msg = fmt.Sprintf(
+					"%s: %q is redundant: identical to effective value from lower layers",
+					s.Location, n.Key,
+				)
+			}
 			violations = append(violations, Violation{
 				Key:      n.Key,
 				Layer:    s.Layer,
 				Value:    s.Value,
+				Location: s.Location,
 				Severity: sev,
-				Message: fmt.Sprintf(
-					"%q in layer %q is redundant: identical to effective value from lower layers",
-					n.Key, s.Layer,
-				),
+				Message:  msg,
 			})
 		}
 	}

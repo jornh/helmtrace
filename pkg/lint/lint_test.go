@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"helmtrace/internal/testutil"
 	"helmtrace/pkg/analyzer"
 )
 
@@ -142,6 +143,62 @@ func redundantScenario() ([]analyzer.Layer, []analyzer.ValueNode) {
 				"database": map[string]interface{}{"port": 5432},
 			},
 		},
+	}
+	nodes := analyzer.Analyze(layers, analyzer.Options{})
+	return layers, nodes
+}
+
+func TestRun_LocationInMessage(t *testing.T) {
+	// Load a real file so Node is populated and location can be resolved.
+	const yaml = `database:
+  port: 5432
+`
+	layers, nodes := redundantScenarioFromYAML(t, yaml, yaml)
+	violations := Run(nodes, layers, Options{})
+
+	if len(violations) != 1 {
+		t.Fatalf("got %d violations, want 1", len(violations))
+	}
+	v := violations[0]
+	if v.Location == nil {
+		t.Fatal("expected Location to be set when layer has a Node")
+	}
+	if v.Location.Line == 0 {
+		t.Error("expected non-zero line number")
+	}
+	// Message should include the file:line:col prefix.
+	if !strings.Contains(v.Message, ":") {
+		t.Errorf("expected location in message, got: %q", v.Message)
+	}
+}
+
+func TestPrintJSON_Location(t *testing.T) {
+	const yaml = `database:
+  port: 5432
+`
+	layers, nodes := redundantScenarioFromYAML(t, yaml, yaml)
+	violations := Run(nodes, layers, Options{})
+
+	var buf bytes.Buffer
+	if err := PrintJSON(&buf, violations); err != nil {
+		t.Fatalf("PrintJSON: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"line"`) {
+		t.Errorf("expected line field in JSON output, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"file"`) {
+		t.Errorf("expected file field in JSON output, got:\n%s", out)
+	}
+}
+
+// redundantScenarioFromYAML builds two layers from raw YAML strings so that
+// *yaml.Node is populated and location tracking can be exercised.
+func redundantScenarioFromYAML(t *testing.T, baseYAML, prodYAML string) ([]analyzer.Layer, []analyzer.ValueNode) {
+	t.Helper()
+	layers := []analyzer.Layer{
+		testutil.LayerFromYAML("base", "base.yaml", baseYAML),
+		testutil.LayerFromYAML("prod", "prod.yaml", prodYAML),
 	}
 	nodes := analyzer.Analyze(layers, analyzer.Options{})
 	return layers, nodes

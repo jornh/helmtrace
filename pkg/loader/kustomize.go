@@ -134,9 +134,14 @@ func loadYAMLLayers(path string) ([]analyzer.Layer, error) {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
 
+	nodes, err := decodeAllYAMLNodes(data)
+	if err != nil {
+		return nil, fmt.Errorf("parsing AST %s: %w", path, err)
+	}
+
 	name := LayerName(path)
 	var layers []analyzer.Layer
-	for _, doc := range docs {
+	for i, doc := range docs {
 		if doc == nil {
 			continue
 		}
@@ -151,16 +156,20 @@ func loadYAMLLayers(path string) ([]analyzer.Layer, error) {
 		if len(docs) > 1 && rk != "" {
 			layerName = name + ":" + rk
 		}
+		var node *yaml.Node
+		if i < len(nodes) {
+			node = nodes[i]
+		}
 		layers = append(layers, analyzer.Layer{
 			Name:        layerName,
+			FilePath:    path,
 			Values:      stripped,
+			Node:        node,
 			ResourceKey: rk,
 		})
 	}
 	if len(layers) == 0 {
-		// File was empty or contained only stripped envelopes — return one
-		// empty layer so callers don't have to handle a nil slice.
-		layers = []analyzer.Layer{{Name: name, Values: map[string]interface{}{}}}
+		layers = []analyzer.Layer{{Name: name, FilePath: path, Values: map[string]interface{}{}}}
 	}
 	return layers, nil
 }
@@ -182,6 +191,25 @@ func decodeAllYAML(data []byte) ([]map[string]interface{}, error) {
 		docs = append(docs, doc)
 	}
 	return docs, nil
+}
+
+// decodeAllYAMLNodes decodes all YAML documents from data as *yaml.Node trees,
+// preserving line/column information for source location tracking.
+func decodeAllYAMLNodes(data []byte) ([]*yaml.Node, error) {
+	var nodes []*yaml.Node
+	dec := yaml.NewDecoder(strings.NewReader(string(data)))
+	for {
+		var node yaml.Node
+		err := dec.Decode(&node)
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			return nil, err
+		}
+		nodes = append(nodes, &node)
+	}
+	return nodes, nil
 }
 
 // stripEnvelope returns only the fields relevant for tracing — spec, data,
