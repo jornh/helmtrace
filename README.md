@@ -163,6 +163,8 @@ pkg/
     json.go           ← structured JSON, flat or grouped by resource
 ```
 
+There is a Glossary at https://deepwiki.com/jornh/helmtrace/9-glossary giving a good first intro to terms and concepts
+
 **Key design boundary:** `pkg/analyzer` is completely unaware of Kubernetes -
 and if the source is Kustomize or Helm. It only ever sees `[]Layer`.
 All Kubernetes-specific knowledge (envelope stripping, `ResourceKey`, patch
